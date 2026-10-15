@@ -3,14 +3,14 @@ from iot_inventory.model.device_model import DeviceModel
 class DataManager:
     """ Data Manager Class """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """ Constructor """
 
         # Initialize the data manager with an empty dictionary to store the devices
         # (instance attribute: each DataManager has its own independent storage)
-        self.device_dictionary = {}
+        self.device_dictionary: dict[str, DeviceModel] = {}
 
-    def add_device(self, new_device):
+    def add_device(self, new_device: DeviceModel) -> None:
         """ Add a new device to the data manager """
 
         # Check if the new device is a DeviceModel
@@ -19,7 +19,7 @@ class DataManager:
         else:
             raise TypeError("Error adding new device ! Only DeviceModel are allowed !")
 
-    def update_device(self, updated_device):
+    def update_device(self, updated_device: DeviceModel) -> None:
         """ Update an existing device in the data manager """
 
         # Check if the updated device is a DeviceModel
@@ -28,7 +28,7 @@ class DataManager:
         else:
             raise TypeError("Error updating the device  Only DeviceModel are allowed !")
 
-    def remove_device(self, device_uuid):
+    def remove_device(self, device_uuid: str) -> None:
         """ Remove a device from the data manager """
 
         # Check if the device exists in the data manager

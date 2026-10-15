@@ -1,32 +1,35 @@
+from typing import Any
 from flask import request, Response
 from flask_restful import Resource
 from werkzeug.exceptions import BadRequest
-from iot_inventory.model.device_model import DeviceModel
+from iot_inventory.dto.device_creation_request import DeviceCreationRequest
+from iot_inventory.dto.device_response import DeviceResponse
+from iot_inventory.persistence.data_manager import DataManager
 
 class DevicesResource(Resource):
     """ Devices Resource Class extends Resource from Flask-RESTful to implement the HTTP Methods and RESTful API """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """ Constructor """
 
         # Read the data manager from the keyword arguments and store it in the instance variable
-        self.dataManager = kwargs['data_manager']
+        self.dataManager: DataManager = kwargs['data_manager']
 
-    def get(self):
+    def get(self) -> tuple[list[dict[str, str]], int]:
         """ Handle HTTP GET Request for the Devices Resource """
 
-        # Create a list of devices from the device dictionary
-        device_list = []
+        # Create a list of device representations from the device dictionary
+        device_list: list[dict[str, str]] = []
 
         # Iterate over all devices in the device dictionary
         for device in self.dataManager.device_dictionary.values():
-            # Append the device data as a dictionary to the list
-            device_list.append(device.__dict__)
+            # Convert each model to its response DTO (Model -> DTO) and then to a dictionary (DTO -> JSON)
+            device_list.append(DeviceResponse.from_model(device).to_json())
 
         # Return the list of devices as JSON with HTTP status code 200
         return device_list, 200
 
-    def post(self):
+    def post(self) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP POST Request for the Devices Resource """
 
         try:
@@ -34,27 +37,27 @@ class DevicesResource(Resource):
             # data as JSON irrespective of the mimetype
             json_data = request.get_json(force=True)
 
-            # Create a new DeviceModel object from the JSON data
-            device_model = DeviceModel(**json_data)
+            # Create and validate the creation request DTO from the JSON data (JSON -> DTO)
+            creation_request = DeviceCreationRequest.from_json(json_data)
 
             # Check if the device UUID already exists in the device dictionary
-            if device_model.uuid in self.dataManager.device_dictionary:
+            if creation_request.uuid in self.dataManager.device_dictionary:
                 return {'error': "Device UUID already exists"}, 409
             else:
-                # Add the device to the data manager
-                self.dataManager.add_device(device_model)
+                # Create the model from the DTO (DTO -> Model) and add it to the data manager
+                self.dataManager.add_device(creation_request.to_model())
 
                 # Return HTTP status code 201 (Created) with the Location header pointing to the new resource
-                return Response(status=201, headers={"Location": request.url + "/" + device_model.uuid})
+                return Response(status=201, headers={"Location": request.url + "/" + creation_request.uuid})
         except BadRequest:
             # Flask does not raise a JSONDecodeError when the body is not valid JSON: request.get_json()
             # raises a Werkzeug BadRequest exception instead. It must be caught explicitly (and before the
             # generic Exception) otherwise a client error would be reported as a 500 Internal Server Error
             return {'error': "Invalid JSON ! Check the request"}, 400
-        except TypeError:
-            # DeviceModel(**json_data) raises a TypeError when the JSON body does not match the constructor
-            # parameters (missing or unexpected fields) or when it is not a JSON object (e.g., a list or null).
-            # This is an error in the client request, so we return 400 Bad Request instead of 500
-            return {'error': "Invalid device data ! Check the request fields"}, 400
+        except ValueError as e:
+            # DeviceCreationRequest.from_json() raises a ValueError when the JSON body does not match the
+            # DTO (not a JSON object, missing, unknown or non-string fields). This is an error in the client
+            # request, so we return 400 Bad Request (with the reason) instead of 500
+            return {'error': str(e)}, 400
         except Exception as e:
             return {'error': "Generic Internal Server Error ! Reason: " + str(e)}, 500
