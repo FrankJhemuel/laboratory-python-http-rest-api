@@ -5,6 +5,7 @@ from werkzeug.exceptions import BadRequest
 from iot_inventory.dto.device_response import DeviceResponse
 from iot_inventory.dto.device_update_request import DeviceUpdateRequest
 from iot_inventory.persistence.data_manager import DataManager
+from iot_inventory.resources.resource_utils import ResourceUtils
 
 class DeviceResource(Resource):
     """ Device Resource Class extends Resource from Flask-RESTful to implement the HTTP Methods and RESTful API """
@@ -17,15 +18,18 @@ class DeviceResource(Resource):
 
     def get(self, device_id: str) -> tuple[dict[str, str], int]:
         """ Handle HTTP GET Request for the Device Resource """
+        try:
+            # Check if the device exists in the data manager
+            if device_id in self.dataManager.device_dictionary:
+                device = self.dataManager.device_dictionary[device_id]
 
-        # Check if the device exists in the data manager
-        if device_id in self.dataManager.device_dictionary:
-            device = self.dataManager.device_dictionary[device_id]
-
-            # Return the device representation (Model -> DTO -> JSON) with HTTP status code 200
-            return DeviceResponse.from_model(device).to_json(), 200
-        else:
-            return {'error': "Device Not Found !"}, 404
+                # Return the device representation (Model -> DTO -> JSON) with HTTP status code 200
+                return DeviceResponse.from_model(device).to_json(), 200
+            else:
+                return {'error': "Device Not Found !"}, 404
+        except Exception:
+            # Unexpected error: log it and return 500 Internal Server Error
+            return ResourceUtils.internal_server_error("reading the device")
 
     def put(self, device_id: str) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP PUT Request for the Device Resource """
@@ -58,8 +62,9 @@ class DeviceResource(Resource):
             # DTO (not a JSON object, missing, unknown or non-string fields). This is an error in the client
             # request, so we return 400 Bad Request (with the reason) instead of 500
             return {'error': str(e)}, 400
-        except Exception as e:
-            return {'error': "Generic Internal Server Error ! Reason: " + str(e)}, 500
+        except Exception:
+            # Unexpected error: log it and return 500 Internal Server Error
+            return ResourceUtils.internal_server_error("updating the device")
 
     def delete(self, device_id: str) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP DELETE Request for the Device Resource """
@@ -74,5 +79,6 @@ class DeviceResource(Resource):
                 return Response(status=204)
             else:
                 return {'error': "Device UUID not found"}, 404
-        except Exception as e:
-            return {'error': "Generic Internal Server Error ! Reason: " + str(e)}, 500
+        except Exception:
+            # Unexpected error: log it and return 500 Internal Server Error
+            return ResourceUtils.internal_server_error("deleting the device")

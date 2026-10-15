@@ -5,6 +5,7 @@ from werkzeug.exceptions import BadRequest
 from iot_inventory.dto.device_creation_request import DeviceCreationRequest
 from iot_inventory.dto.device_response import DeviceResponse
 from iot_inventory.persistence.data_manager import DataManager
+from iot_inventory.resources.resource_utils import ResourceUtils
 
 class DevicesResource(Resource):
     """ Devices Resource Class extends Resource from Flask-RESTful to implement the HTTP Methods and RESTful API """
@@ -15,19 +16,22 @@ class DevicesResource(Resource):
         # Read the data manager from the keyword arguments and store it in the instance variable
         self.dataManager: DataManager = kwargs['data_manager']
 
-    def get(self) -> tuple[list[dict[str, str]], int]:
+    def get(self) -> tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]:
         """ Handle HTTP GET Request for the Devices Resource """
+        try:
+            # Create a list of device representations from the device dictionary
+            device_list: list[dict[str, str]] = []
 
-        # Create a list of device representations from the device dictionary
-        device_list: list[dict[str, str]] = []
+            # Iterate over all devices in the device dictionary
+            for device in self.dataManager.device_dictionary.values():
+                # Convert each model to its response DTO (Model -> DTO) and then to a dictionary (DTO -> JSON)
+                device_list.append(DeviceResponse.from_model(device).to_json())
 
-        # Iterate over all devices in the device dictionary
-        for device in self.dataManager.device_dictionary.values():
-            # Convert each model to its response DTO (Model -> DTO) and then to a dictionary (DTO -> JSON)
-            device_list.append(DeviceResponse.from_model(device).to_json())
-
-        # Return the list of devices as JSON with HTTP status code 200
-        return device_list, 200
+            # Return the list of devices as JSON with HTTP status code 200
+            return device_list, 200
+        except Exception:
+            # Unexpected error: log it and return 500 Internal Server Error
+            return ResourceUtils.internal_server_error("reading the device list")
 
     def post(self) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP POST Request for the Devices Resource """
@@ -59,5 +63,6 @@ class DevicesResource(Resource):
             # DTO (not a JSON object, missing, unknown or non-string fields). This is an error in the client
             # request, so we return 400 Bad Request (with the reason) instead of 500
             return {'error': str(e)}, 400
-        except Exception as e:
-            return {'error': "Generic Internal Server Error ! Reason: " + str(e)}, 500
+        except Exception:
+            # Unexpected error: log it and return 500 Internal Server Error
+            return ResourceUtils.internal_server_error("creating the device")

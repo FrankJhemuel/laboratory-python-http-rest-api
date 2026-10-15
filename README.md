@@ -12,109 +12,28 @@ In order to have additional information have a look at the official laboratory d
 
 Laboratory structure and main sections are:
 
-- [API HTTP RESTful Specifications](#api-http-restful-specifications)
-- [Project Creation & Dependencies](#project-creation--dependencies)
-- [Project Structure](#project-structure)
-- [Running the Project](#running-the-project)
-- [Resource, Representation and Model](#resource-representation-and-model)
-- [Model Classes](#model-classes)
-- [Device Data Manager](#device-data-manager)
-- [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos)
-- [Creation of the Devices Resource](#creation-of-the-devices-resource)
-- [HTTP Service Creation](#http-service-creation)
-- [Creation of the Device Resource](#creation-of-the-device-resource)
-- [Creating a New Device (HTTP - POST)](#creating-a-new-device-http---post)
-- [Implementation of PUT and DELETE](#implementation-of-put-and-delete)
+- [Part 1: Setup](#part-1-setup)
+  - [Project Creation & Dependencies](#project-creation--dependencies)
+  - [Project Structure](#project-structure)
+  - [Running the Project](#running-the-project)
+- [Part 2: Design](#part-2-design)
+  - [API HTTP RESTful Specifications](#api-http-restful-specifications)
+  - [Resource, Representation and Model](#resource-representation-and-model)
+- [Part 3: Implementation](#part-3-implementation)
+  - [Model Classes](#model-classes)
+  - [Device Data Manager](#device-data-manager)
+  - [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos)
+  - [Creation of the Devices Resource](#creation-of-the-devices-resource)
+  - [HTTP Service Creation](#http-service-creation)
+  - [Creation of the Device Resource](#creation-of-the-device-resource)
+  - [Creating a New Device (HTTP - POST)](#creating-a-new-device-http---post)
+  - [Implementation of PUT and DELETE](#implementation-of-put-and-delete)
 
-## API HTTP RESTful Specifications
+## Part 1: Setup
 
-In the following subsections, the specifications of the HTTP RESTful API to be implemented are provided. 
-The base PATH to be used for the API is `api/iot/inventory`. 
+This part describes how to create the project, install its dependencies and run the server.
 
-An example of a complete URL associated with the PATH and the demo resource to be modeled (device) is: http://127.0.0.1:7070/api/iot/inventory/device.
-
-### Device Data Structure
-
-The data structure (JSON representation) of the IoT Device resource exchanged with the clients should include the following fields
-(note that this is the **API contract** and it is not necessarily equal to the internal model of the server, 
-see [Resource, Representation and Model](#resource-representation-and-model)):
-
-- uuid (String): Unique identifier of the device. This ID will also be used as the key to identify it within the REST resources.
-- type (String): Identifies the device type. Any value is allowed (e.g., temperature, humidity, demo sensor).
-- softwareVersion (String): Represents the version of the software running on the device.
-- manufacturer (String): Identifies the manufacturer of the device.
-
-An example JSON representation of the resource to be modeled is as follows:
-
-```json
-{
-    "uuid": "device00002",
-    "type": "iot:demosensor",
-    "softwareVersion": "v0.0.0.1",
-    "manufacturer": "Acme-Inc"
-}
-```
-
-### Endpoint HTTP RESTful to Design and Implement
-
-For the device resource, the following endpoints are considered, 
-along with their characteristics in terms of HTTP methods, body, headers, and response codes:
-
-- **(READ DEVICE LIST) HTTP GET /device**: Returns the list of all devices registered on the server.
-- Request Body: Empty
-- Response:
-  - Header: Content-Type: application/json
-  - Body: [{…}, {…}, {Device Data Structure}]
-  - Response Codes:
-    - 200 OK
-    - 400 Bad Request
-    - 404 Not Found
-    - 500 Internal Server Error
-
-- **(CREATE NEW DEVICE) HTTP POST /device**: Create a new device.
-- Request Body: {Device Data Structure}
-- Response:
-  - Header: Location: http://127.0.0.1:7070/api/iot/inventory/device/device00001
-  - Body: Empty
-  - Response Codes:
-    - 201 Created
-    - 400 Bad Request
-    - 409 Conflict
-    - 500 Internal Server Error
-
-- **(READ DEVICE) HTTP GET /device/<device_id>**: Read the target device through its ID.
-- Request Body: Empty
-- Response:
-  - Header: Content-Type: application/json
-  - Body: {Device Data Structure}
-  - Response Codes:
-    - 200 OK
-    - 400 Bad Request
-    - 404 Not Found
-    - 500 Internal Server Error
-
-- **(UPDATE DEVICE) HTTP PUT /device/<device_id>**: Update a target device through its ID.
-- Request Body: {Device Data Structure} without the `uuid` field (the device is identified by the `<device_id>` in the URL), e.g.:
-  `{"type": "iot:demosensor", "softwareVersion": "v0.0.0.2", "manufacturer": "Acme-Inc"}`
-- Response:
-  - Body: Empty
-  - Response Codes:
-    - 204 No Content
-    - 400 Bad Request (also when the body contains the `uuid`, since the UUID of a device cannot be changed)
-    - 404 Not Found
-    - 500 Internal Server Error
-
-- **(REMOVE DEVICE) HTTP DELETE /device/<device_id>**: Delete the target device through its ID.
-- Request Body: Empty
-- Response:
-  - Body: Empty
-  - Response Codes:
-    - 204 No Content
-    - 400 Bad Request
-    - 404 Not Found
-    - 500 Internal Server Error
-
-## Project Creation & Dependencies
+### Project Creation & Dependencies
 
 The project uses the following dependencies:
 
@@ -143,7 +62,7 @@ so that the package can be imported and the `iot-inventory-server` command is av
 In PyCharm, you can select the existing `.venv` interpreter or add a new "uv" interpreter from the interpreter settings.
 Mark the `src/` folder as **Sources Root** (right click on the folder → _Mark Directory as_ → _Sources Root_).
 
-### Using pip (alternative)
+#### Using pip (alternative)
 
 The `requirements.txt` file is **generated** from `uv.lock` and is kept only for pip-based workflows:
 
@@ -158,9 +77,11 @@ Do not edit it manually. After changing the dependencies, regenerate it with:
 uv export --no-hashes --no-dev -o requirements.txt
 ```
 
-## Project Structure
+### Project Structure
 
 The project follows the `src` layout: the server code is the `iot_inventory` package in `src/`.
+The organization of the package in `dto/`, `model/`, `persistence/` and `resources/` reflects the design 
+of the API described in [Resource, Representation and Model](#resource-representation-and-model).
 
 ```
 laboratory-python-http-rest-api/
@@ -183,6 +104,7 @@ laboratory-python-http-rest-api/
     ├── persistence/
     │   └── data_manager.py     # DataManager class (in-memory storage)
     └── resources/
+        ├── resource_utils.py   # ResourceUtils class (handling of 500 errors with logging)
         ├── devices_resource.py # DevicesResource class (/device)
         └── device_resource.py  # DeviceResource class (/device/<device_id>)
 ```
@@ -203,6 +125,7 @@ laboratory-python-http-rest-api/
 - **Resources** (`resources/`):
   - _devices_resource.py_: Contains the `DevicesResource` class that handles the list of devices (`GET` and `POST` on `/device`).
   - _device_resource.py_: Contains the `DeviceResource` class that handles a single device (`GET`, `PUT` and `DELETE` on `/device/<device_id>`).
+  - _resource_utils.py_: Contains the `ResourceUtils` class with the static method `internal_server_error()` used by the resources to log unexpected errors and build the `500 Internal Server Error` response.
 
 Each folder of the package contains an `__init__.py` file and internal modules are imported with 
 absolute imports from the package, e.g.:
@@ -217,10 +140,10 @@ The project follows these code conventions:
 (e.g., `DeviceCreationRequest` in `device_creation_request.py`). In this way the structure of the folders mirrors 
 the concepts of the project and each file has a single responsibility.
 - **Helper logic in utility classes**: the logic shared by several classes is implemented as static methods of a 
-dedicated utility class (e.g., `DtoUtils.validate_fields()` in `dto_utils.py`).
+dedicated utility class (e.g., `DtoUtils.validate_fields()` in `dto_utils.py` and `ResourceUtils.internal_server_error()` in `resource_utils.py`).
 - **Type hints** on all parameters, return values and attributes (see [Model Classes](#model-classes)).
 
-## Running the Project
+### Running the Project
 
 The server is exposed as a command (`iot-inventory-server`) declared in the `[project.scripts]` section
 of `pyproject.toml`. From the project root run:
@@ -252,7 +175,123 @@ With the server running, you can test the API with Postman (as shown in the foll
 curl http://127.0.0.1:7070/api/iot/inventory/device
 ```
 
-## Resource, Representation and Model
+## Part 2: Design
+
+This part describes the design of the HTTP RESTful API (endpoints, representations and response codes) and the main concepts used to structure the implementation.
+
+### API HTTP RESTful Specifications
+
+In the following subsections, the specifications of the HTTP RESTful API to be implemented are provided. 
+The base PATH to be used for the API is `api/iot/inventory`. 
+
+An example of a complete URL associated with the PATH and the demo resource to be modeled (device) is: http://127.0.0.1:7070/api/iot/inventory/device.
+
+#### Device Data Structure
+
+The data structure (JSON representation) of the IoT Device resource exchanged with the clients should include the following fields
+(note that this is the **API contract** and it is not necessarily equal to the internal model of the server, 
+see [Resource, Representation and Model](#resource-representation-and-model)):
+
+- uuid (String): Unique identifier of the device. This ID will also be used as the key to identify it within the REST resources.
+- type (String): Identifies the device type. Any value is allowed (e.g., temperature, humidity, demo sensor).
+- softwareVersion (String): Represents the version of the software running on the device.
+- manufacturer (String): Identifies the manufacturer of the device.
+
+An example JSON representation of the resource to be modeled is as follows:
+
+```json
+{
+    "uuid": "device00002",
+    "type": "iot:demosensor",
+    "softwareVersion": "v0.0.0.1",
+    "manufacturer": "Acme-Inc"
+}
+```
+
+#### Endpoint HTTP RESTful to Design and Implement
+
+For the device resource, the following endpoints are considered, 
+along with their characteristics in terms of HTTP methods, body, headers, and response codes:
+
+- **(READ DEVICE LIST) HTTP GET /device**: Returns the list of all devices registered on the server.
+- Request Body: Empty
+- Response:
+  - Header: Content-Type: application/json
+  - Body: [{…}, {…}, {Device Data Structure}] (an empty list `[]` if no device is registered)
+  - Response Codes:
+    - 200 OK
+    - 500 Internal Server Error
+
+- **(CREATE NEW DEVICE) HTTP POST /device**: Create a new device.
+- Request Body: {Device Data Structure}
+- Response:
+  - Header: Location: http://127.0.0.1:7070/api/iot/inventory/device/device00001
+  - Body: Empty
+  - Response Codes:
+    - 201 Created
+    - 400 Bad Request (invalid JSON or invalid device fields)
+    - 409 Conflict (a device with the same `uuid` already exists)
+    - 500 Internal Server Error
+
+- **(READ DEVICE) HTTP GET /device/<device_id>**: Read the target device through its ID.
+- Request Body: Empty
+- Response:
+  - Header: Content-Type: application/json
+  - Body: {Device Data Structure}
+  - Response Codes:
+    - 200 OK
+    - 404 Not Found (the device does not exist)
+    - 500 Internal Server Error
+
+- **(UPDATE DEVICE) HTTP PUT /device/<device_id>**: Update a target device through its ID.
+- Request Body: {Device Data Structure} without the `uuid` field (the device is identified by the `<device_id>` in the URL), e.g.:
+  `{"type": "iot:demosensor", "softwareVersion": "v0.0.0.2", "manufacturer": "Acme-Inc"}`
+- Response:
+  - Body: Empty
+  - Response Codes:
+    - 204 No Content
+    - 400 Bad Request (invalid JSON, invalid device fields or a body containing the `uuid`, since the UUID of a device cannot be changed)
+    - 404 Not Found (the device does not exist)
+    - 500 Internal Server Error
+
+- **(REMOVE DEVICE) HTTP DELETE /device/<device_id>**: Delete the target device through its ID.
+- Request Body: Empty
+- Response:
+  - Body: Empty
+  - Response Codes:
+    - 204 No Content
+    - 404 Not Found (the device does not exist)
+    - 500 Internal Server Error
+
+#### Endpoint Summary
+
+The following table summarizes the endpoints of the API (all the URIs are relative to the base path `/api/iot/inventory`):
+
+| Operation | Method | URI | Request Body | Response Body | Success | Errors |
+|---|---|---|---|---|---|---|
+| Read device list | `GET` | `/device` | Empty | List of {Device Data Structure} | `200 OK` | `500` |
+| Create new device | `POST` | `/device` | {Device Data Structure} | Empty (`Location` header with the URL of the new device) | `201 Created` | `400`, `409`, `500` |
+| Read device | `GET` | `/device/<device_id>` | Empty | {Device Data Structure} | `200 OK` | `404`, `500` |
+| Update device | `PUT` | `/device/<device_id>` | {Device Data Structure} without `uuid` | Empty | `204 No Content` | `400`, `404`, `500` |
+| Remove device | `DELETE` | `/device/<device_id>` | Empty | Empty | `204 No Content` | `404`, `500` |
+
+Error responses (`4xx` and `5xx`) contain a JSON body with a message describing the problem, e.g., `{"error": "Device Not Found !"}`. 
+The `500 Internal Server Error` is returned by all the endpoints when an unexpected error occurs while handling the request. 
+In this case, the response does not expose the internal details of the error, but it contains a unique identifier 
+(`errorId`) that is also written in the server log together with the details of the error (see [Handling of Internal Server Errors](#handling-of-internal-server-errors)), e.g.:
+
+```json
+{
+    "error": "Internal Server Error ! An unexpected error occurred while reading the device list",
+    "errorId": "031e0e93a7554badb7a69d536ff8d30d"
+}
+```
+
+
+In addition, Flask automatically responds with `405 Method Not Allowed` to the HTTP methods that are not supported by an endpoint 
+(e.g., `DELETE /device`).
+
+### Resource, Representation and Model
 
 Before writing the code, it is important to distinguish four concepts that are often confused, 
 since the same IoT device exists in different "forms", each one with a different responsibility:
@@ -287,11 +326,13 @@ Write (POST/PUT):  JSON body --> DTO (validation) --> Model --> DataManager
 Read  (GET):       DataManager --> Model --> DTO --> JSON body
 ```
 
-## Model Classes
+## Part 3: Implementation
 
-> **Note:** the following sections describe the step-by-step construction of the project. 
-> All the files are created inside the `src/iot_inventory/` package (see [Project Structure](#project-structure)) 
-> and the complete, commented implementation of each step is available in the repository.
+This part describes the step-by-step construction of the project. 
+All the files are created inside the `src/iot_inventory/` package (see [Project Structure](#project-structure)) 
+and the complete, commented implementation of each step is available in the repository.
+
+### Model Classes
 
 Inside the package `src/iot_inventory/`, create a folder named `model` (with an empty `__init__.py` file). 
 Inside it, create the file `device_model.py` and the following class `DeviceModel`, 
@@ -330,7 +371,7 @@ enable autocompletion and error highlighting in the IDE (e.g., PyCharm) and can 
 (e.g., `dict[str, DeviceModel]`, `list[dict[str, str]]`, `tuple[dict[str, str], int]`) and the `|` operator 
 for union types (e.g., `DataManager | None`), which are used in the following sections.
 
-## Device Data Manager
+### Device Data Manager
 
 Inside the package `src/iot_inventory/`, create a new folder named `persistence` (with an empty `__init__.py` file)
 which will contain the class for data storage (in this example, using a dictionary for in-memory storage). 
@@ -375,7 +416,7 @@ methods validate the type of the parameter passed: the type hint `new_device: De
 but since type hints are not enforced at runtime, the explicit check with `isinstance()` is still required. In the case of an invalid type different from `DeviceModel`, 
 they raise a system exception of type `TypeError` to signal to the calling method the error with the provided parameter.
 
-## Data Transfer Objects (DTOs)
+### Data Transfer Objects (DTOs)
 
 Inside the package `src/iot_inventory/`, create a new folder named `dto` (with an empty `__init__.py` file) 
 that will contain the DTOs of the device resource, **one class for each file**. 
@@ -399,7 +440,7 @@ a dictionary with `asdict(self)`. The `**` operator unpacks a dictionary into ke
 > In this laboratory we use only the standard library (`dataclasses`) on purpose: no additional dependencies are 
 > required and the validation and the conversion between DTOs and models remain explicit and visible in the code.
 
-### Validation of the Request Body
+#### Validation of the Request Body
 
 The two request DTOs share the same validation logic, implemented by the static method `validate_fields()` 
 of the `DtoUtils` class, in the file `dto_utils.py`:
@@ -436,7 +477,7 @@ creating a `DtoUtils` object. The method checks that the deserialized JSON body 
 fields, all of them strings. Otherwise, it raises a `ValueError` with a message describing the problem 
 (e.g., `Missing fields: manufacturer`), which will be returned to the client with a `400 Bad Request` response.
 
-### Creation Request DTO
+#### Creation Request DTO
 
 Create the file `device_creation_request.py` with the `DeviceCreationRequest` class:
 
@@ -472,7 +513,7 @@ since the class is not fully defined yet while its body is being executed.
 - `to_model()` creates a new `DeviceModel` from the creation request, mapping the names of the API contract 
 to the names of the model (e.g., `softwareVersion` → `software_version`).
 
-### Update Request DTO
+#### Update Request DTO
 
 Create the file `device_update_request.py` with the `DeviceUpdateRequest` class:
 
@@ -509,7 +550,7 @@ instead of the generic `Unknown fields: uuid` that `DtoUtils.validate_fields()` 
 - `apply_to()` updates only the editable fields of an existing `DeviceModel`: the `uuid` and the internal data 
 (`created_at`) are not changed by the update.
 
-### Response DTO
+#### Response DTO
 
 Create the file `device_response.py` with the `DeviceResponse` class:
 
@@ -544,13 +585,61 @@ depend on the DTOs: the internal representation does not know anything about how
 In this project the conversion methods (`to_model()`, `apply_to()`, `from_model()`) are part of the DTOs to keep 
 the code simple; in larger projects they are often moved to dedicated **mapper** classes.
 
-## Creation of the Devices Resource
+### Creation of the Devices Resource
 
 Inside the package `src/iot_inventory/`, create a new folder named `resources` (with an empty `__init__.py` file) 
 that will contain the dedicated Python classes for describing the RESTful 
 resources managed by the HTTP service. The Flask framework handles resources and their sub-elements differently. 
 For this reason, it will be necessary to create separate classes for each type of resource. 
 For example, to handle requests on `/device` and `/device/<device_id>`.
+
+#### Handling of Internal Server Errors
+
+All the methods of the resources handle the unexpected errors (e.g., a bug or a failure of the storage) in the same way: 
+the error is written in the server log and the client receives a `500 Internal Server Error` response. 
+To avoid duplicating this logic in every method, inside the `resources` folder create the file `resource_utils.py` 
+with the following `ResourceUtils` class:
+
+```python
+import logging
+import uuid
+
+logger = logging.getLogger(__name__)
+
+
+class ResourceUtils:
+
+    @staticmethod
+    def internal_server_error(operation: str) -> tuple[dict[str, str], int]:
+        error_id = uuid.uuid4().hex
+        logger.exception("Internal Server Error [errorId: %s] while %s", error_id, operation)
+        return {'error': "Internal Server Error ! An unexpected error occurred while " + operation,
+                'errorId': error_id}, 500
+```
+
+In the provided code, the following aspects are highlighted:
+
+- The module uses the standard [`logging`](https://docs.python.org/3/library/logging.html) module instead of `print()`: 
+each message has a **level** (e.g., `DEBUG`, `INFO`, `WARNING`, `ERROR`) and is written by a **logger** identified by a name. 
+`logging.getLogger(__name__)` creates the logger of the module, named after the module itself (`iot_inventory.resources.resource_utils`), 
+so that each log entry shows where it comes from. How and where the messages are written (e.g., on the console) is configured 
+once in the application (see [HTTP Service Creation](#http-service-creation)).
+- `internal_server_error()` must be called inside an `except` block: `logger.exception()` writes the message with the `ERROR` level 
+and automatically adds the **stack trace** of the exception being handled, which is fundamental to find the cause of the error.
+- The details of the exception (its message and stack trace) are written **only in the server log** and are never returned 
+to the client: they could expose internal information about the implementation (e.g., names of classes, files or data), 
+which is a security issue and is not useful to the client.
+- A unique identifier of the error (`errorId`, generated with `uuid.uuid4()`) is written both in the log and in the response: 
+if a client reports a problem, the identifier allows finding the corresponding log entry with all the details.
+- The `operation` parameter describes what the server was doing (e.g., `"reading the device list"`) and is used in both the log 
+message and the response.
+
+Each method of the resources wraps its logic in a `try`/`except` block and, as the last `except` clause, catches any 
+other exception (`except Exception:`) to delegate it to `ResourceUtils.internal_server_error()`. 
+More specific exceptions (e.g., the client errors that must be reported with `400 Bad Request`) are caught in the 
+previous clauses, since Python uses the first `except` clause that matches the exception.
+
+#### Devices Resource
 
 Firstly, let's begin with creating the class to handle requests on `/device` and enable the retrieval of the list of devices (GET) 
 and their creation (POST).
@@ -566,31 +655,36 @@ from werkzeug.exceptions import BadRequest
 from iot_inventory.dto.device_creation_request import DeviceCreationRequest
 from iot_inventory.dto.device_response import DeviceResponse
 from iot_inventory.persistence.data_manager import DataManager
+from iot_inventory.resources.resource_utils import ResourceUtils
 
 class DevicesResource(Resource):
 
     def __init__(self, **kwargs: Any) -> None:
         self.dataManager: DataManager = kwargs['data_manager']
 
-    def get(self) -> tuple[list[dict[str, str]], int]:
-        device_list: list[dict[str, str]] = []
-        for device in self.dataManager.device_dictionary.values():
-            device_list.append(DeviceResponse.from_model(device).to_json())
-        return device_list, 200
+    def get(self) -> tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]:
+        try:
+            device_list: list[dict[str, str]] = []
+            for device in self.dataManager.device_dictionary.values():
+                device_list.append(DeviceResponse.from_model(device).to_json())
+            return device_list, 200
+        except Exception:
+            return ResourceUtils.internal_server_error("reading the device list")
 ```
 
 The newly created class extends the Flask class Resource and has the following characteristics:
 
 - The constructor allows retrieving variables passed during instantiation through a dictionary. In this specific case, we retrieve the `data_manager` variable of type `DataManager`, which will be stored as an attribute of the class (`self.dataManager: DataManager`) to maintain a reference for working with the stored data. The passing of `DataManager` to the class will be explained in the next step. Since `kwargs` can contain values of any type, it is annotated as `**kwargs: Any` (`Any` is imported from the standard `typing` module), while the type hint on `self.dataManager` tells the IDE and the type checker that it is a `DataManager`.
 - The Flask framework, through the base class Resource, enables quick association of HTTP methods (GET, POST, PUT, DELETE) with Python functions named the same way (get, post, put, delete). In the current case, for instance, we can handle GET requests by redefining the method using the syntax: `def get(self):`. As illustrated later, these methods can also have parameters associated with the path and are usable within the function.
-- The `get` method converts each `DeviceModel` stored in the `DataManager` into its representation through the `DeviceResponse` DTO (Model → DTO → JSON), instead of exposing the internal attributes of the model. It returns a tuple containing the response body (a list of dictionaries, one for each device, that Flask-RESTful serializes as JSON) and the HTTP status code. Its return type is therefore `tuple[list[dict[str, str]], int]`.
+- The `get` method converts each `DeviceModel` stored in the `DataManager` into its representation through the `DeviceResponse` DTO (Model → DTO → JSON), instead of exposing the internal attributes of the model. It returns a tuple containing the response body (a list of dictionaries, one for each device, that Flask-RESTful serializes as JSON) and the HTTP status code. In case of an unexpected error, it returns the response built by `ResourceUtils.internal_server_error()`. Its return type is therefore `tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]`.
 
-## HTTP Service Creation
+### HTTP Service Creation
 
 Inside the package `src/iot_inventory/`, create a new file named `api_server.py` that will contain the definition of the HTTP server and its 
 REST resources to be managed. The following listing presents the structure of the module:
 
 ```python
+import logging
 from flask import Flask
 from flask_restful import Api
 from iot_inventory.resources.devices_resource import DevicesResource
@@ -624,6 +718,8 @@ def load_demo_data(data_manager: DataManager) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+
     data_manager = DataManager()
     load_demo_data(data_manager)
 
@@ -648,8 +744,13 @@ In the provided code, the following aspects are highlighted:
   - Adds a new resource of the type `DevicesResource`, previously created and associated with the endpoint `/api/iot/inventory/device`, using the `api.add_resource` method. Additionally, it passes the `DataManager` reference to the resource through `resource_class_kwargs`, specifies an endpoint name, and defines the supported methods (Flask will automatically respond with a 405 Method Not Allowed for all other methods).
   - Returns the configured app without starting it.
 - `load_demo_data()` creates a demo `DeviceModel` object and inserts it into the `DataManager` for testing purposes.
-- `main()` is the entry point of the project: it creates the `DataManager`, loads the demo data, creates the app and starts the server 
+- `main()` is the entry point of the project: it configures the logging, creates the `DataManager`, loads the demo data, creates the app and starts the server 
 on the port `7070` binding all the IPs and interfaces (specifying `0.0.0.0`).
+- `logging.basicConfig()` configures the logging of the whole application (it must be called only once, at startup): 
+the messages with level `INFO` or higher are written on the console with the timestamp, the level and the name of the logger, e.g.:
+`2026-10-15 10:02:14,103 ERROR [iot_inventory.resources.resource_utils] Internal Server Error [errorId: 031e...] while reading the device list`, 
+followed by the stack trace. The same format is also applied to the messages of the Flask development server (logger `werkzeug`), 
+such as the log line of each received HTTP request.
 
 Creating the app inside a function (instead of at module level) means that importing the module has no side effects 
 (nothing is printed or created), each call to `create_server_app()` returns a new and independent app 
@@ -678,7 +779,7 @@ The results on Postman are illustrated in the following Figure:
 
 ![](images/get_devices.png)
 
-## Creation of the Device Resource
+### Creation of the Device Resource
 
 Inside the `resources` folder, create a file named `device_resource.py` containing the `DeviceResource` 
 class to manage access to the resource associated with a single device, rather than a list of devices. 
@@ -692,6 +793,7 @@ from werkzeug.exceptions import BadRequest
 from iot_inventory.dto.device_response import DeviceResponse
 from iot_inventory.dto.device_update_request import DeviceUpdateRequest
 from iot_inventory.persistence.data_manager import DataManager
+from iot_inventory.resources.resource_utils import ResourceUtils
 
 class DeviceResource(Resource):
 
@@ -699,11 +801,14 @@ class DeviceResource(Resource):
         self.dataManager: DataManager = kwargs['data_manager']
 
     def get(self, device_id: str) -> tuple[dict[str, str], int]:
-        if device_id in self.dataManager.device_dictionary:
-            device = self.dataManager.device_dictionary[device_id]
-            return DeviceResponse.from_model(device).to_json(), 200
-        else:
-            return {'error': "Device Not Found !"}, 404
+        try:
+            if device_id in self.dataManager.device_dictionary:
+                device = self.dataManager.device_dictionary[device_id]
+                return DeviceResponse.from_model(device).to_json(), 200
+            else:
+                return {'error': "Device Not Found !"}, 404
+        except Exception:
+            return ResourceUtils.internal_server_error("reading the device")
 ```
 
 The newly created class still extends the Flask class `Resource` 
@@ -714,7 +819,8 @@ The class possesses the following characteristics:
 In this specific case, we retrieve the `data_manager` variable of type `DataManager`, 
 which will be stored as an attribute of the class to maintain a reference for working with the stored data.
 - Definition of the method `def get(self, device_id: str) -> tuple[dict[str, str], int]:` to handle GET requests on the resource. 
-As for the list of devices, the `DeviceModel` is converted into its `DeviceResponse` representation before being returned. 
+As for the list of devices, the `DeviceModel` is converted into its `DeviceResponse` representation before being returned 
+and the unexpected errors are handled with `ResourceUtils.internal_server_error()`. 
 In this case, there's an additional parameter that will be correctly passed by the Flask framework and will 
 contain the value of the `device_id` passed in the path. For example, the value could be `device00001` with a URL structure like `http://127.0.0.1:7070/api/iot/inventory/device/device00001`
 
@@ -746,7 +852,7 @@ The results on Postman are illustrated in the following figure:
 
 ![](images/get_single_device.png)
 
-## Creating a New Device (HTTP - POST)
+### Creating a New Device (HTTP - POST)
 
 In order to create a new device on the newly created server, it's necessary to handle the POST 
 method in the `DevicesResource` class to respond appropriately to `POST` requests on the path `/device`. 
@@ -766,8 +872,8 @@ def post(self) -> Response | tuple[dict[str, str], int]:
         return {'error': "Invalid JSON ! Check the request"}, 400
     except ValueError as e:
         return {'error': str(e)}, 400
-    except Exception as e:
-        return {'error': "Generic Internal Server Error ! Reason: " + str(e)}, 500
+    except Exception:
+        return ResourceUtils.internal_server_error("creating the device")
 ```
 
 Specifically, the created code enables the following operations:
@@ -790,7 +896,8 @@ So we use: `Response(status=201, headers={"Location": request.url + "/" + creati
 For this reason, the return type of the method is `Response | tuple[dict[str, str], int]`: 
 either a `Response` object or a tuple with the error message and the status code.
 - Handles client errors with a `400 Bad Request` response, catching the specific exceptions before the generic one 
-(which is reported as `500 Internal Server Error`):
+(which is logged and reported as `500 Internal Server Error` by `ResourceUtils.internal_server_error()`, see 
+[Handling of Internal Server Errors](#handling-of-internal-server-errors)):
   - `BadRequest` (from `werkzeug.exceptions`): raised by `request.get_json()` when the body is not valid JSON. 
   Note that Flask does not raise a `JSONDecodeError` in this case, so catching `JSONDecodeError` would not work.
   - `ValueError`: raised by `DeviceCreationRequest.from_json()` when the body does not match the DTO 
@@ -829,7 +936,7 @@ curl -i -X POST -H "Content-Type: application/json" \
      http://127.0.0.1:7070/api/iot/inventory/device
 ```
 
-## Implementation of PUT and DELETE
+### Implementation of PUT and DELETE
 
 As additional exercises, implement and add the following methods to the `DeviceResource` class:
 
@@ -840,11 +947,12 @@ changes applied to the existing `DeviceModel` with `apply_to()` (then save it wi
 As for the POST, catch the `ValueError` raised by `DeviceUpdateRequest.from_json()` to return its message to the client. In case of success, 
 the response code should be `204` with no body, while in case of error, use `400` for an invalid request 
 (invalid JSON, invalid device fields or an attempt to change the `uuid` by including it in the body), 
-`404` for a resource not found or `500` in case of a server error. 
+`404` for a resource not found or `500` in case of a server error (handled with `ResourceUtils.internal_server_error()`). 
 In all the error cases, specify a message in the body explaining the problem details.
 - `def delete(...)` to be associated with the HTTP `DELETE` method for deleting a resource by its ID. 
 In this case, it's necessary to validate and check the presence of the requested resource and respond with 
-`204` with no body in case of success, `404` for a resource not found, or `500` in case of a server error. 
+`204` with no body in case of success, `404` for a resource not found, or `500` in case of a server error 
+(handled with `ResourceUtils.internal_server_error()`). 
 In both error cases, specify a message in the body explaining the problem details.
 
 Below are the method declarations to be used: Flask-RESTful automatically associates them with the 

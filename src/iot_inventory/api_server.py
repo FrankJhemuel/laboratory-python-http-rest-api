@@ -1,3 +1,4 @@
+import logging
 from flask import Flask
 from flask_restful import Api
 from iot_inventory.resources.device_resource import DeviceResource
@@ -56,6 +57,10 @@ def load_demo_data(data_manager: DataManager) -> None:
 
 def main() -> None:
     """ Create demo data and start the Flask App (entry point of the project) """
+
+    # Configure the logging of the application: messages with level INFO or higher are written on the console
+    # with the timestamp, the level and the name of the logger (e.g., iot_inventory.resources.resource_utils)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 
     # Create Data Manager and fill it with the demo data
     data_manager = DataManager()
