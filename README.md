@@ -49,22 +49,68 @@ Install uv (if needed) following the [official instructions](https://docs.astral
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then, from the project root, create the virtual environment (`.venv`) and install all the dependencies with:
+#### Creation of the Base Project
+
+The tutorial starts from a **base project** that contains only the configuration files and an empty package, 
+which will be filled step by step in [Part 3: Implementation](#part-3-implementation). 
+Create the project folder with the `src/iot_inventory` package, the `.python-version` file and a `README.md` file:
+
+```bash
+mkdir laboratory-python-http-rest-api
+cd laboratory-python-http-rest-api
+mkdir -p src/iot_inventory
+touch src/iot_inventory/__init__.py README.md
+echo "3.12" > .python-version
+```
+
+Then, in the project root, create the `pyproject.toml` file with the metadata and the dependencies of the project:
+
+```toml
+[project]
+name = "laboratory-python-http-rest-api"
+version = "0.1.0"
+description = "IoT Inventory - Laboratory RESTful HTTP API (Flask + Flask-RESTful)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=2.3,<3",
+    "flask-restful>=0.3.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "iot_inventory"
+```
+
+- `[project]` contains the metadata of the project and its dependencies (with the allowed versions). 
+The `README.md` file is required since it is referenced by the `readme` field.
+- `[build-system]` and `[tool.uv.build-backend]` tell uv how to build and install the project itself: 
+the code is in the `iot_inventory` package (`module-name`) inside the `src/` folder.
+
+Finally, from the project root, create the virtual environment (`.venv`) and install all the dependencies with:
 
 ```bash
 uv sync
 ```
 
-uv automatically downloads the required Python version if it is not available on your machine.
+uv automatically downloads the required Python version if it is not available on your machine and creates the 
+`uv.lock` file with the exact versions of all the installed packages.
 The command also installs the project itself (the `iot_inventory` package) in editable mode, 
-so that the package can be imported and the `iot-inventory-server` command is available.
+so that the package can be imported from anywhere in the project. 
+Run `uv sync` again every time `pyproject.toml` is modified (e.g., to add a dependency or, as shown later, a command).
+
+> **Note:** if you cloned the repository, the project is already complete (see [Final Structure](#final-structure)): 
+> just run `uv sync` from the project root to install it.
 
 In PyCharm, you can select the existing `.venv` interpreter or add a new "uv" interpreter from the interpreter settings.
 Mark the `src/` folder as **Sources Root** (right click on the folder → _Mark Directory as_ → _Sources Root_).
 
 #### Using pip (alternative)
 
-The `requirements.txt` file is **generated** from `uv.lock` and is kept only for pip-based workflows:
+The `requirements.txt` file of the repository is **generated** from `uv.lock` and is kept only for pip-based workflows:
 
 ```bash
 pip install -r requirements.txt
@@ -80,8 +126,27 @@ uv export --no-hashes --no-dev -o requirements.txt
 ### Project Structure
 
 The project follows the `src` layout: the server code is the `iot_inventory` package in `src/`.
-The organization of the package in `dto/`, `model/`, `persistence/` and `resources/` reflects the design 
-of the API described in [Resource, Representation and Model](#resource-representation-and-model).
+
+#### Initial Structure
+
+After the [creation of the base project](#creation-of-the-base-project), the project has the following structure:
+
+```
+laboratory-python-http-rest-api/
+├── pyproject.toml              # Project metadata and dependencies
+├── uv.lock                     # Locked dependency versions (created and managed by uv)
+├── .python-version             # Pinned Python version (3.12)
+├── .venv/                      # Virtual environment (created by uv, not versioned)
+├── README.md
+└── src/
+    └── iot_inventory/          # Server application package (empty)
+        └── __init__.py
+```
+
+#### Final Structure
+
+At the end of the tutorial, after creating all the files described in [Part 3: Implementation](#part-3-implementation), 
+the project has the following structure (which corresponds to the content of this repository):
 
 ```
 laboratory-python-http-rest-api/
@@ -89,6 +154,7 @@ laboratory-python-http-rest-api/
 ├── uv.lock                     # Locked dependency versions (managed by uv)
 ├── .python-version             # Pinned Python version (3.12)
 ├── requirements.txt            # Generated from uv.lock for pip users
+├── README.md
 ├── images/                     # Images used in this README
 └── src/iot_inventory/          # Server application package
     ├── __init__.py
@@ -109,23 +175,23 @@ laboratory-python-http-rest-api/
         └── device_resource.py  # DeviceResource class (/device/<device_id>)
 ```
 
-- **Server Application** (`src/iot_inventory`):
-  - _api_server.py_: The main entry point of the project. It contains:
-    - `create_server_app()`: the Flask App Factory that creates the application and registers the API resources. If no Data Manager is passed, a new empty one is created. Importing the module has no side effects and each call returns a new, independent app (useful for testing with `app.test_client()`).
-    - `load_demo_data()`: adds a demo device to the Data Manager.
-    - `main()`: creates the Data Manager, loads the demo data, creates the app and starts the server on port 7070.
-  - _\_\_main\_\_.py_: calls `main()` so that the server can also be started with `python -m iot_inventory`.
-- **DTOs** (`dto/`):
-  - Contains the Data Transfer Objects that describe the JSON representations exchanged with the clients, one class for each file: _device_creation_request.py_ (`DeviceCreationRequest`, POST body), _device_update_request.py_ (`DeviceUpdateRequest`, PUT body) and _device_response.py_ (`DeviceResponse`, GET response).
-  - _dto_utils.py_: Contains the `DtoUtils` class with the static method `validate_fields()` used by the request DTOs to validate the JSON body.
-- **Models** (`model/`):
-  - _device_model.py_: Contains the `DeviceModel` class, the internal representation of an IoT device used by the server.
-- **Persistence** (`persistence/`):
-  - _data_manager.py_: Contains the `DataManager` class that stores the devices in memory (one independent dictionary for each `DataManager` instance).
-- **Resources** (`resources/`):
-  - _devices_resource.py_: Contains the `DevicesResource` class that handles the list of devices (`GET` and `POST` on `/device`).
-  - _device_resource.py_: Contains the `DeviceResource` class that handles a single device (`GET`, `PUT` and `DELETE` on `/device/<device_id>`).
-  - _resource_utils.py_: Contains the `ResourceUtils` class with the static method `internal_server_error()` used by the resources to log unexpected errors and build the `500 Internal Server Error` response.
+The organization of the package in `dto/`, `model/`, `persistence/` and `resources/` reflects the design 
+of the API described in [Resource, Representation and Model](#resource-representation-and-model). 
+The following table lists the files of the package in the order in which they are created during the tutorial:
+
+| File | Content | Created in |
+|---|---|---|
+| `model/device_model.py` | `DeviceModel` class: the internal representation of an IoT device used by the server | [Model Classes](#model-classes) |
+| `persistence/data_manager.py` | `DataManager` class: in-memory storage of the devices (one independent dictionary for each instance) | [Device Data Manager](#device-data-manager) |
+| `dto/dto_utils.py` | `DtoUtils` class: static method `validate_fields()` used by the request DTOs to validate the JSON body | [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos) |
+| `dto/device_creation_request.py` | `DeviceCreationRequest` class: representation of the POST body | [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos) |
+| `dto/device_update_request.py` | `DeviceUpdateRequest` class: representation of the PUT body | [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos) |
+| `dto/device_response.py` | `DeviceResponse` class: representation of a device returned by the GET requests | [Data Transfer Objects (DTOs)](#data-transfer-objects-dtos) |
+| `resources/resource_utils.py` | `ResourceUtils` class: static method `internal_server_error()` that logs the unexpected errors and builds the `500 Internal Server Error` response | [Creation of the Devices Resource](#creation-of-the-devices-resource) |
+| `resources/devices_resource.py` | `DevicesResource` class: list of devices (`GET` and `POST` on `/device`) | [Creation of the Devices Resource](#creation-of-the-devices-resource) and [Creating a New Device (HTTP - POST)](#creating-a-new-device-http---post) |
+| `api_server.py` | `create_server_app()` (Flask App Factory that registers the API resources), `load_demo_data()` (adds a demo device) and `main()` (entry point that starts the server on port 7070) | [HTTP Service Creation](#http-service-creation) |
+| `__main__.py` | Calls `main()` so that the server can also be started with `python -m iot_inventory` | [HTTP Service Creation](#http-service-creation) |
+| `resources/device_resource.py` | `DeviceResource` class: single device (`GET`, `PUT` and `DELETE` on `/device/<device_id>`) | [Creation of the Device Resource](#creation-of-the-device-resource) and [Implementation of PUT and DELETE](#implementation-of-put-and-delete) |
 
 Each folder of the package contains an `__init__.py` file and internal modules are imported with 
 absolute imports from the package, e.g.:
@@ -144,6 +210,10 @@ dedicated utility class (e.g., `DtoUtils.validate_fields()` in `dto_utils.py` an
 - **Type hints** on all parameters, return values and attributes (see [Model Classes](#model-classes)).
 
 ### Running the Project
+
+> **Note:** the server can be started only when the project contains at least the `api_server.py` module, i.e., 
+> starting from the [HTTP Service Creation](#http-service-creation) step of the tutorial (or immediately, 
+> if you cloned the repository with the complete project).
 
 The server is exposed as a command (`iot-inventory-server`) declared in the `[project.scripts]` section
 of `pyproject.toml`. From the project root run:
@@ -756,13 +826,25 @@ Creating the app inside a function (instead of at module level) means that impor
 (nothing is printed or created), each call to `create_server_app()` returns a new and independent app 
 (e.g., to be used in tests through `app.test_client()`), and the app can also be started with the Flask CLI.
 
-The project also contains the file `__main__.py` (which simply calls `main()` to enable `python -m iot_inventory`) and 
-the following entry in `pyproject.toml`, which creates the `iot-inventory-server` command:
+In order to start the server in a simple way, also create the file `__main__.py` inside the package `src/iot_inventory/`. 
+Python executes this file when the package is run as a module with `python -m iot_inventory`:
+
+```python
+from iot_inventory.api_server import main
+
+if __name__ == '__main__':
+    main()
+```
+
+Then, add the following section to the `pyproject.toml` file to create the `iot-inventory-server` command, 
+which calls the `main()` function of the `api_server` module:
 
 ```toml
 [project.scripts]
 iot-inventory-server = "iot_inventory.api_server:main"
 ```
+
+Since `pyproject.toml` has been modified, run `uv sync` again to install the new command.
 
 With the code defined above, you can launch the server (e.g., with `uv run iot-inventory-server`, see [Running the Project](#running-the-project)) 
 and test the GET request to retrieve the list of registered devices using Postman. 
