@@ -446,7 +446,7 @@ for union types (e.g., `DataManager | None`), which are used in the following se
 Inside the package `src/iot_inventory/`, create a new folder named `persistence` (with an empty `__init__.py` file)
 which will contain the class for data storage (in this example, using a dictionary for in-memory storage). 
 Within the persistence package, create the file `data_manager.py` with the following `DataManager` 
-class responsible for handling all storage operations (create, update, and remove) for 
+class responsible for handling all storage operations (read, create, update, and remove) for 
 the project's devices using the previously created `DeviceModel` class:
 
 ```python
@@ -455,36 +455,86 @@ from iot_inventory.model.device_model import DeviceModel
 class DataManager:
 
     def __init__(self) -> None:
-        self.device_dictionary: dict[str, DeviceModel] = {}
+        self._device_dictionary: dict[str, DeviceModel] = {}
+
+    def get_device(self, device_uuid: str) -> DeviceModel | None:
+        return self._device_dictionary.get(device_uuid)
+
+    def get_all_devices(self) -> list[DeviceModel]:
+        return list(self._device_dictionary.values())
+
+    def device_exists(self, device_uuid: str) -> bool:
+        return device_uuid in self._device_dictionary
 
     def add_device(self, new_device: DeviceModel) -> None:
-        if isinstance(new_device, DeviceModel):
-            self.device_dictionary[new_device.uuid] = new_device
-        else:
+        if not isinstance(new_device, DeviceModel):
             raise TypeError("Error adding new device ! Only DeviceModel are allowed !")
+        if new_device.uuid in self._device_dictionary:
+            raise ValueError("Error adding new device ! Device UUID already exists !")
+        self._device_dictionary[new_device.uuid] = new_device
 
     def update_device(self, updated_device: DeviceModel) -> None:
-        if isinstance(updated_device, DeviceModel):
-            self.device_dictionary[updated_device.uuid] = updated_device
-        else:
+        if not isinstance(updated_device, DeviceModel):
             raise TypeError("Error updating the device ! Only DeviceModel are allowed !")
+        if updated_device.uuid not in self._device_dictionary:
+            raise KeyError("Error updating the device ! Device UUID not found !")
+        self._device_dictionary[updated_device.uuid] = updated_device
 
-    def remove_device(self, device_uuid: str) -> None:
-        if device_uuid in self.device_dictionary.keys():
-            del self.device_dictionary[device_uuid]
+    def remove_device(self, device_uuid: str) -> bool:
+        if device_uuid in self._device_dictionary:
+            del self._device_dictionary[device_uuid]
+            return True
+        else:
+            return False
 ```
 
-The `device_dictionary` (of type `dict[str, DeviceModel]`, i.e., a dictionary mapping each device UUID to its `DeviceModel`)
+The `_device_dictionary` (of type `dict[str, DeviceModel]`, i.e., a dictionary mapping each device UUID to its `DeviceModel`)
 is created in the constructor (`__init__`) as an **instance attribute**: in this way each 
 `DataManager` object has its own independent storage. Declaring it at class level (e.g., `device_dictionary = {}` 
 directly in the class body) would instead create a single dictionary shared by all the instances of the class.
 
-The methods within `DataManager` allow for creating, modifying, 
-and removing devices from the dictionary and thus from the storage system. 
-Specifically, note that the `add_device()` and `update_device()` 
+The leading underscore in `_device_dictionary` marks the attribute as **private** by convention 
+(Python does not enforce it): the other classes of the project (e.g., the Resources) must not access the dictionary 
+directly, but only through the methods of the `DataManager`. In this way the `DataManager` **encapsulates** the storage, 
+which could later be replaced (e.g., with a database) without modifying the code that uses it.
+
+The methods within `DataManager` allow for reading, creating, modifying, 
+and removing devices from the dictionary and thus from the storage system:
+
+| Method | Description |
+|---|---|
+| `get_device(device_uuid)` | Returns the `DeviceModel` with the given uuid, or `None` if it does not exist |
+| `get_all_devices()` | Returns a new list with all the stored devices (a copy: the caller cannot change the internal dictionary) |
+| `device_exists(device_uuid)` | Returns `True` if a device with the given uuid exists, `False` otherwise |
+| `add_device(new_device)` | Adds a new device. Raises `TypeError` for an invalid type and `ValueError` if the uuid already exists |
+| `update_device(updated_device)` | Updates an existing device. Raises `TypeError` for an invalid type and `KeyError` if the uuid does not exist |
+| `remove_device(device_uuid)` | Removes a device. Returns `True` if the device was removed, `False` if it does not exist |
+
+**Why does `get_device()` return `None`?** When the requested device does not exist, a reading method can 
+signal it in different ways, each one with its own trade-off:
+
+- **Returning `None`** (the choice of this project, with the return type `DeviceModel | None`): a missing device is 
+an *expected* situation (e.g., a client requesting a wrong uuid) and not an error of the `DataManager`. 
+The caller performs a single lookup and checks the result with `if device is not None:` to decide the 
+response (e.g., `200 OK` or `404 Not Found`). The type hint `DeviceModel | None` documents the possible `None` and 
+allows the type checker (e.g., mypy) to report the code that uses the result without checking it. 
+Internally, it uses `dict.get()`, which returns `None` for a missing key, instead of `dict[key]`, which raises a `KeyError`.
+- **Raising an exception** (e.g., `KeyError` or a custom `DeviceNotFoundError`): the caller must catch it with 
+`try/except` (otherwise it becomes a `500 Internal Server Error`). It is the preferable option when a missing 
+element is really an *unexpected* error, since it cannot be silently ignored.
+- **Checking first with `device_exists()` and then reading the device**: it is readable, but it requires two lookups 
+and, in a concurrent server, the device could be removed by another request between the two calls.
+
+The same idea is applied to `remove_device()`, which returns a `bool` instead of raising an exception, so that 
+the caller can check the existence and remove the device with a single call.
+
+Note also that the `add_device()` and `update_device()` 
 methods validate the type of the parameter passed: the type hint `new_device: DeviceModel` documents the expected type, 
 but since type hints are not enforced at runtime, the explicit check with `isinstance()` is still required. In the case of an invalid type different from `DeviceModel`, 
-they raise a system exception of type `TypeError` to signal to the calling method the error with the provided parameter.
+they raise a system exception of type `TypeError` to signal to the calling method the error with the provided parameter. 
+Moreover, they protect the consistency of the stored data: `add_device()` does not silently overwrite an existing 
+device and `update_device()` does not create a new device. In these cases the exception signals a bug in the calling 
+code, since the Resources check the existence of the device before calling them (returning `409` or `404` to the client).
 
 ### Data Transfer Objects (DTOs)
 
@@ -735,7 +785,7 @@ class DevicesResource(Resource):
     def get(self) -> tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]:
         try:
             device_list: list[dict[str, str]] = []
-            for device in self.dataManager.device_dictionary.values():
+            for device in self.dataManager.get_all_devices():
                 device_list.append(DeviceResponse.from_model(device).to_json())
             return device_list, 200
         except Exception:
@@ -746,7 +796,7 @@ The newly created class extends the Flask class Resource and has the following c
 
 - The constructor allows retrieving variables passed during instantiation through a dictionary. In this specific case, we retrieve the `data_manager` variable of type `DataManager`, which will be stored as an attribute of the class (`self.dataManager: DataManager`) to maintain a reference for working with the stored data. The passing of `DataManager` to the class will be explained in the next step. Since `kwargs` can contain values of any type, it is annotated as `**kwargs: Any` (`Any` is imported from the standard `typing` module), while the type hint on `self.dataManager` tells the IDE and the type checker that it is a `DataManager`.
 - The Flask framework, through the base class Resource, enables quick association of HTTP methods (GET, POST, PUT, DELETE) with Python functions named the same way (get, post, put, delete). In the current case, for instance, we can handle GET requests by redefining the method using the syntax: `def get(self):`. As illustrated later, these methods can also have parameters associated with the path and are usable within the function.
-- The `get` method converts each `DeviceModel` stored in the `DataManager` into its representation through the `DeviceResponse` DTO (Model → DTO → JSON), instead of exposing the internal attributes of the model. It returns a tuple containing the response body (a list of dictionaries, one for each device, that Flask-RESTful serializes as JSON) and the HTTP status code. In case of an unexpected error, it returns the response built by `ResourceUtils.internal_server_error()`. Its return type is therefore `tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]`.
+- The `get` method reads the stored devices with `get_all_devices()` (instead of accessing the private dictionary of the `DataManager`) and converts each `DeviceModel` into its representation through the `DeviceResponse` DTO (Model → DTO → JSON), instead of exposing the internal attributes of the model. It returns a tuple containing the response body (a list of dictionaries, one for each device, that Flask-RESTful serializes as JSON) and the HTTP status code. In case of an unexpected error, it returns the response built by `ResourceUtils.internal_server_error()`. Its return type is therefore `tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]`.
 
 ### HTTP Service Creation
 
@@ -884,8 +934,8 @@ class DeviceResource(Resource):
 
     def get(self, device_id: str) -> tuple[dict[str, str], int]:
         try:
-            if device_id in self.dataManager.device_dictionary:
-                device = self.dataManager.device_dictionary[device_id]
+            device = self.dataManager.get_device(device_id)
+            if device is not None:
                 return DeviceResponse.from_model(device).to_json(), 200
             else:
                 return {'error': "Device Not Found !"}, 404
@@ -905,6 +955,10 @@ As for the list of devices, the `DeviceModel` is converted into its `DeviceRespo
 and the unexpected errors are handled with `ResourceUtils.internal_server_error()`. 
 In this case, there's an additional parameter that will be correctly passed by the Flask framework and will 
 contain the value of the `device_id` passed in the path. For example, the value could be `device00001` with a URL structure like `http://127.0.0.1:7070/api/iot/inventory/device/device00001`
+- The device is read with `get_device(device_id)`, which returns `None` when the device does not exist 
+(see [Device Data Manager](#device-data-manager) for the reasons of this choice and the alternatives): 
+a single lookup allows the method to decide between the `200 OK` response with the device representation 
+and the `404 Not Found` error.
 
 In order to test the service, it's necessary to first add the new resource and its management to the previously created 
 `api_server.py` file. The code to be inserted consists of the correct reference 
@@ -945,7 +999,7 @@ def post(self) -> Response | tuple[dict[str, str], int]:
     try:
         json_data = request.get_json(force=True)
         creation_request = DeviceCreationRequest.from_json(json_data)
-        if creation_request.uuid in self.dataManager.device_dictionary:
+        if self.dataManager.device_exists(creation_request.uuid):
             return {'error': "Device UUID already exists"}, 409
         else:
             self.dataManager.add_device(creation_request.to_model())
@@ -967,7 +1021,7 @@ by the client is not `application/json`. While the client should ideally always 
 forcing deserialization can help mitigate minor client errors.
 - Transforms and validates the deserialized generic JSON object into the `DeviceCreationRequest` DTO using 
 `DeviceCreationRequest.from_json(json_data)` (JSON → DTO).
-- Checks if a device with the same `UUID` already exists in the `DataManager`. 
+- Checks if a device with the same `UUID` already exists in the `DataManager` with `device_exists()`. 
 If so, it responds with an error message and a response code of `409 CONFLICT`.
 - If the device is new, it creates the corresponding `DeviceModel` with `creation_request.to_model()` (DTO → Model), 
 adds it to the `DataManager` and responds with a 
@@ -1025,14 +1079,15 @@ As additional exercises, implement and add the following methods to the `DeviceR
 - `def put(...)` to be associated with the HTTP `PUT` method for updating an existing resource, 
 performing appropriate checks on the request, resource ID, and body. The body must be converted into a 
 `DeviceUpdateRequest` DTO (which does not contain the `uuid`, since the device is identified by the URL) and its 
-changes applied to the existing `DeviceModel` with `apply_to()` (then save it with `update_device()` of the `DataManager`). 
+changes applied to the existing `DeviceModel` (read with `get_device()`) with `apply_to()` (then save it with `update_device()` of the `DataManager`). 
 As for the POST, catch the `ValueError` raised by `DeviceUpdateRequest.from_json()` to return its message to the client. In case of success, 
 the response code should be `204` with no body, while in case of error, use `400` for an invalid request 
 (invalid JSON, invalid device fields or an attempt to change the `uuid` by including it in the body), 
 `404` for a resource not found or `500` in case of a server error (handled with `ResourceUtils.internal_server_error()`). 
 In all the error cases, specify a message in the body explaining the problem details.
 - `def delete(...)` to be associated with the HTTP `DELETE` method for deleting a resource by its ID. 
-In this case, it's necessary to validate and check the presence of the requested resource and respond with 
+In this case, it's necessary to validate and check the presence of the requested resource (the `bool` returned by 
+`remove_device()` of the `DataManager` tells whether the device existed and has been removed) and respond with 
 `204` with no body in case of success, `404` for a resource not found, or `500` in case of a server error 
 (handled with `ResourceUtils.internal_server_error()`). 
 In both error cases, specify a message in the body explaining the problem details.

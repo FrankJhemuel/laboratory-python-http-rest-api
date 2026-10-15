@@ -19,10 +19,10 @@ class DeviceResource(Resource):
     def get(self, device_id: str) -> tuple[dict[str, str], int]:
         """ Handle HTTP GET Request for the Device Resource """
         try:
-            # Check if the device exists in the data manager
-            if device_id in self.dataManager.device_dictionary:
-                device = self.dataManager.device_dictionary[device_id]
+            # Read the device from the data manager (None if it does not exist)
+            device = self.dataManager.get_device(device_id)
 
+            if device is not None:
                 # Return the device representation (Model -> DTO -> JSON) with HTTP status code 200
                 return DeviceResponse.from_model(device).to_json(), 200
             else:
@@ -34,8 +34,10 @@ class DeviceResource(Resource):
     def put(self, device_id: str) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP PUT Request for the Device Resource """
         try:
-            # Check if the device exists in the data manager
-            if device_id in self.dataManager.device_dictionary:
+            # Read the device from the data manager (None if it does not exist)
+            device = self.dataManager.get_device(device_id)
+
+            if device is not None:
                 # The boolean flag force the parsing of POST data as JSON irrespective of the mimetype
                 json_data = request.get_json(force=True)
 
@@ -44,7 +46,6 @@ class DeviceResource(Resource):
                 update_request = DeviceUpdateRequest.from_json(json_data)
 
                 # Apply the changes to the existing model (DTO -> Model) and update it in the data manager
-                device = self.dataManager.device_dictionary[device_id]
                 update_request.apply_to(device)
                 self.dataManager.update_device(device)
 
@@ -69,12 +70,9 @@ class DeviceResource(Resource):
     def delete(self, device_id: str) -> Response | tuple[dict[str, str], int]:
         """ Handle HTTP DELETE Request for the Device Resource """
         try:
-            # Check if the device exists in the data manager
-            if device_id in self.dataManager.device_dictionary:
-
-                # Remove the device from the data manager
-                self.dataManager.remove_device(device_id)
-
+            # Remove the device from the data manager (False if it does not exist): a single call both
+            # checks the existence and removes the device
+            if self.dataManager.remove_device(device_id):
                 # Return HTTP status code 204 (No Content)
                 return Response(status=204)
             else:

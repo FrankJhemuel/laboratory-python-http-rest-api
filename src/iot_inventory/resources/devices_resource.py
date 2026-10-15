@@ -19,11 +19,11 @@ class DevicesResource(Resource):
     def get(self) -> tuple[list[dict[str, str]], int] | tuple[dict[str, str], int]:
         """ Handle HTTP GET Request for the Devices Resource """
         try:
-            # Create a list of device representations from the device dictionary
+            # Create a list of device representations from the devices stored in the data manager
             device_list: list[dict[str, str]] = []
 
-            # Iterate over all devices in the device dictionary
-            for device in self.dataManager.device_dictionary.values():
+            # Iterate over all devices stored in the data manager
+            for device in self.dataManager.get_all_devices():
                 # Convert each model to its response DTO (Model -> DTO) and then to a dictionary (DTO -> JSON)
                 device_list.append(DeviceResponse.from_model(device).to_json())
 
@@ -44,8 +44,8 @@ class DevicesResource(Resource):
             # Create and validate the creation request DTO from the JSON data (JSON -> DTO)
             creation_request = DeviceCreationRequest.from_json(json_data)
 
-            # Check if the device UUID already exists in the device dictionary
-            if creation_request.uuid in self.dataManager.device_dictionary:
+            # Check if the device UUID already exists in the data manager
+            if self.dataManager.device_exists(creation_request.uuid):
                 return {'error': "Device UUID already exists"}, 409
             else:
                 # Create the model from the DTO (DTO -> Model) and add it to the data manager
