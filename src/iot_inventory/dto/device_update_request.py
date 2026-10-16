@@ -25,7 +25,7 @@ class DeviceUpdateRequest:
             raise ValueError("Invalid device data ! The device uuid cannot be changed: "
                              "remove the uuid field from the body (the device is identified by the URL)")
 
-        return cls(**DtoUtils.validate_fields(data, ("type", "softwareVersion", "manufacturer")))
+        return cls(**DtoUtils.validate_fields(data, tuple(cls.__dataclass_fields__.keys())))
 
     def apply_to(self, device: DeviceModel) -> None:
         """ Update the editable fields of an existing DeviceModel (uuid and internal data are not changed) """

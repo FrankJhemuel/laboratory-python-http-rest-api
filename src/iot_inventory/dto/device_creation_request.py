@@ -16,7 +16,7 @@ class DeviceCreationRequest:
     @classmethod
     def from_json(cls, data: Any) -> "DeviceCreationRequest":
         """ Create the DTO from the deserialized JSON body (JSON -> DTO) """
-        return cls(**DtoUtils.validate_fields(data, ("uuid", "type", "softwareVersion", "manufacturer")))
+        return cls(**DtoUtils.validate_fields(data, tuple(cls.__dataclass_fields__.keys())))
 
     def to_model(self) -> DeviceModel:
         """ Create a new DeviceModel from the DTO (DTO -> Model) """
